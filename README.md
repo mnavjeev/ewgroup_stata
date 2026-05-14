@@ -62,16 +62,17 @@ help ewgroup
 
 ### Public GitHub install
 
-After pushing this directory to a public repository, users can install from the
-raw GitHub URL. For example, if the repository is
-`https://github.com/USER/ewgroup_stata`, users can run:
+After this repository is public, users can install directly from GitHub:
 
 ```stata
-net install ewgroup, from("https://raw.githubusercontent.com/USER/ewgroup_stata/main") replace
+net install ewgroup, from("https://raw.githubusercontent.com/mnavjeev/ewgroup_stata/main") replace
 ```
 
-If the package is kept in a subdirectory of a larger repository, the `from()`
-URL should point to the directory containing `stata.toc` and `ewgroup.pkg`.
+The source repository is:
+
+```text
+https://github.com/mnavjeev/ewgroup_stata
+```
 
 ## Quick Start
 
@@ -321,6 +322,12 @@ cd "/path/to/ewgroup_stata"
 do tests/certify.do
 ```
 
+The package manifest can also be checked with a local `net install`:
+
+```stata
+do tests/check_net_install.do
+```
+
 To regenerate the R fixtures:
 
 ```bash
@@ -328,16 +335,6 @@ Rscript tests/make_reference.R
 ```
 
 Then rerun the Stata certification script.
-
-## Notes for Public Release
-
-Before tagging a public release:
-
-- Run `do tests/certify.do` in Stata.
-- Check that `ewgroup.pkg` lists every file that should be installed.
-- Replace the example GitHub URL in this README with the real repository URL.
-- Add a license file if the package is released independently of the companion
-  R package.
 
 ## Authors
 
