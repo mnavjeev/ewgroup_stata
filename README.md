@@ -58,6 +58,55 @@ ewgroup y x1 x2, group(unit) prefix(theta_)
 Use the `sigma()` option only when you are working with covariance matrices
 directly, especially for vector-valued estimates.
 
+## What Should the Data Look Like?
+
+There are two common data layouts.
+
+### Raw data layout
+
+Use this layout with `ewgroup`. Each row is one observation. The group variable
+tells Stata which cell the observation belongs to.
+
+```text
+w       y
+1      -1.25
+1      -1.10
+1      -1.05
+2      -0.85
+2      -0.78
+3       0.35
+3       0.42
+```
+
+For a regression with cell-specific slopes, the raw data also include the
+regressors:
+
+```text
+w       y        x
+1      1.21     0.0
+1      1.28     0.1
+1      1.31     0.2
+2      1.40     0.0
+2      1.51     0.1
+2      1.59     0.2
+```
+
+In this layout, use `ewgroup`.
+
+### Estimate-and-standard-error layout
+
+Use this layout with `ewgroup_core`. Each row is one unit or cell, not one raw
+observation.
+
+```text
+unit    beta_hat    se_hat
+1       -1.10       0.200
+2       -0.95       0.235
+3        0.20       0.212
+```
+
+In this layout, use `ewgroup_core`.
+
 ## Step-by-Step: Estimates and Standard Errors
 
 This is the simplest use case. Suppose you have one estimate per unit and a
@@ -105,13 +154,34 @@ ewgroup_core beta_hat, variance(variance_hat) generate(theta2) replace
 
 ## Step-by-Step: Cell Means From Raw Data
 
-Use this when the model is a cell mean:
+Use this section when your dataset has one row per observation, not one row per
+cell. The outcome is `y`, and `w` says which cell the observation belongs to.
+
+The model is:
 
 ```text
 y_i = beta(w_i) + error_i
 ```
 
-Here is a complete example:
+In this example there are four cells. Cell 1 has five observations, cell 2 has
+five observations, and so on. Your data should be in long form:
+
+```text
+observation    w       y
+1              1      -1.25
+2              1      -1.10
+3              1      -1.05
+4              1      -0.95
+5              1      -0.90
+6              2      -0.85
+7              2      -0.78
+...            ...     ...
+18             4       1.22
+19             4       1.28
+20             4       1.35
+```
+
+Enter the example data:
 
 ```stata
 clear
@@ -137,14 +207,36 @@ input byte w double y
 4  1.28
 4  1.35
 end
+```
 
+Estimate the adjusted cell means:
+
+```stata
 ewgroup y, group(w) generate(theta) replace
+```
+
+This command does three things:
+
+1. It computes the usual mean of `y` in each cell `w`.
+2. It estimates the sampling variance of each cell mean from the observations
+   inside the cell.
+3. It applies the `ewgroup` adjustment and writes the adjusted cell mean to
+   `theta`.
+
+For example, before the adjustment, the command treats the five observations
+with `w == 1` as the data for cell 1, the five observations with `w == 2` as the
+data for cell 2, and so on. You do not need to collapse the data first.
+
+Now look at the result:
+
+```stata
 list w y theta, sepby(w)
 matrix list e(theta)
 ```
 
-The generated variable `theta` is repeated for every observation in the same
-cell. The matrix `e(theta)` has one row per cell.
+The variable `theta` is constant within each value of `w`, because the estimate
+is a cell-level estimate. The matrix `e(theta)` gives the same estimates with
+one row per cell. The row order follows the cell ids in `e(cells)`.
 
 ## Step-by-Step: Cell-Specific Regressions
 
@@ -156,6 +248,20 @@ y_i = beta(w_i)' x_i + error_i
 ```
 
 Example with one regressor and an intercept:
+
+```text
+observation    w       y        x
+1              1      1.24     0.0
+2              1      1.20     0.1
+3              1      1.27     0.2
+...            ...    ...      ...
+21             2      1.41     0.0
+22             2      1.44     0.1
+```
+
+Each cell must have enough observations to estimate its own regression. With
+one regressor and an intercept, each cell needs at least two observations, and
+the regressor must vary within the cell.
 
 ```stata
 clear
