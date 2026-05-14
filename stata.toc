@@ -1,0 +1,5 @@
+v 0.1.0
+d ewgroup Stata package
+d
+d ewgroup: exponentially weighted grouped-heterogeneity estimator
+p ewgroup
