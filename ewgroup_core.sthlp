@@ -45,6 +45,30 @@ If you have variances rather than standard errors, use {cmd:variance()}.
 For vector-valued estimates, use {cmd:sigma()} to supply diagonal or full
 covariance estimates.
 
+{title:Typical Use}
+
+{pstd}
+The common scalar workflow is:
+
+{phang2}
+1. Create a dataset with one row per unit.
+
+{phang2}
+2. Put the original estimate in one variable, for example {cmd:beta_hat}.
+
+{phang2}
+3. Put its standard error in another variable, for example {cmd:se_hat}.
+
+{phang2}
+4. Run:
+
+{phang2}
+{cmd:. ewgroup_core beta_hat, se(se_hat) generate(theta)}
+
+{pstd}
+The new variable {cmd:theta} is the adjusted estimate.  The original estimate
+is not changed.
+
 {pstd}
 When {cmd:sigma()} is used, the covariance of the preliminary estimate in cell
 {it:j} is interpreted as {cmd:sigma2()} times {it:Sigma_hat_j}.  This matches

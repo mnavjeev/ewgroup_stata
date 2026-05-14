@@ -68,6 +68,28 @@ The final cell-level estimates are stored in {cmd:e(theta)}.  If {cmd:generate()
 or {cmd:prefix()} is specified, the estimates are also written back to the data,
 repeated for all observations in the same cell.
 
+{title:Typical Use}
+
+{pstd}
+For cell means, where the only variable that changes by cell is the mean of
+{it:y}, run:
+
+{phang2}
+{cmd:. ewgroup y, group(w) generate(theta)}
+
+{pstd}
+For cell-specific regressions, include the regressors after the dependent
+variable:
+
+{phang2}
+{cmd:. ewgroup y x1 x2, group(w) prefix(theta_)}
+
+{pstd}
+In the first command, {cmd:theta} is the adjusted cell mean.  In the second
+command, {cmd:theta_1}, {cmd:theta_2}, and so on are the adjusted regression
+coefficients.  These generated variables repeat the same cell-level estimate
+for every observation in the same cell.
+
 {title:Options}
 
 {phang}

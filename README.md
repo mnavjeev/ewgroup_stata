@@ -1,124 +1,117 @@
 # ewgroup for Stata
 
-`ewgroup` implements an exponentially weighted grouped-heterogeneity estimator
-for Stata. The estimator starts from noisy cell-specific estimates, pools nearby
-cells using covariance-adjusted exponential weights, applies the debiasing
-correction from the paper, and combines the pooled estimate with the naive
-cell-by-cell estimate using a feasible SURE rule.
+`ewgroup` is a Stata package for estimating many noisy group- or cell-level
+parameters. It is useful when you have one estimate per unit, such as a teacher,
+firm, plan, judge, occupation, county, or other discrete group, and you think
+some units may have similar underlying effects.
 
-The package has two user-facing commands:
+The package starts from the usual cell-by-cell estimates. It then averages
+nearby estimates using weights based on both the estimates and their sampling
+uncertainty. A final SURE step decides how much of that averaging to use. If the
+data do not support much pooling, the final estimate can stay close to the
+cell-by-cell estimate.
 
-- `ewgroup`: starts from raw data, estimates cell-by-cell least-squares
-  coefficients, computes scaled HC0 covariance estimates, and applies the
-  estimator.
-- `ewgroup_core`: starts from one row per cell with precomputed naive estimates
-  and standard errors, variances, or scaled covariance estimates. For scalar
-  estimates this is close to the workflow used by empirical Bayes commands:
-  give the command a point estimate and its standard error, and ask for an
-  adjusted estimate.
-
-## Repository Layout
-
-```text
-ewgroup.ado              raw-data command
-ewgroup_core.ado         cell-summary command
-ewgroup_mata.mata        shared Mata implementation
-ewgroup.sthlp            Stata help for ewgroup
-ewgroup_core.sthlp       Stata help for ewgroup_core
-ewgroup.pkg              net install package manifest
-stata.toc                Stata package table of contents
-examples/                runnable example do-files
-tests/                   certification tests and R reference fixtures
-```
-
-## Requirements
-
-- Stata 16 or newer.
-- No external Stata packages are required.
-- R is only needed if you want to regenerate the reference fixtures in
-  `tests/` from the companion R implementation.
-
-## Installation
-
-### Local development checkout
+## Install
 
 From Stata:
-
-```stata
-adopath ++ "/path/to/ewgroup_stata"
-help ewgroup
-```
-
-This is the easiest setup while editing the package.
-
-### Local net install
-
-From Stata:
-
-```stata
-net install ewgroup, from("/path/to/ewgroup_stata") replace
-help ewgroup
-```
-
-### Public GitHub install
-
-After this repository is public, users can install directly from GitHub:
 
 ```stata
 net install ewgroup, from("https://raw.githubusercontent.com/mnavjeev/ewgroup_stata/main") replace
 ```
 
-The source repository is:
+Then check that Stata can find the command:
 
-```text
-https://github.com/mnavjeev/ewgroup_stata
+```stata
+help ewgroup
+help ewgroup_core
 ```
 
-## Quick Start
+If you are working from a local checkout of the repository instead of GitHub,
+use:
 
-### Empirical-Bayes-style use with estimates and standard errors
+```stata
+adopath ++ "/path/to/ewgroup_stata"
+```
 
-Many applied users will already have one estimate per teacher, firm, plan,
-judge, region, or other unit, together with a standard error. In that case use
-`ewgroup_core` with `se()`:
+## Which Command Should I Use?
+
+Use `ewgroup_core` if you already have one row per unit with an estimate and a
+standard error. This is the closest workflow to empirical Bayes commands.
+
+```stata
+ewgroup_core beta_hat, se(se_hat) generate(theta)
+```
+
+Use `ewgroup` if you have the raw data and want Stata to compute the first-stage
+cell estimates for you.
+
+```stata
+ewgroup y, group(unit) generate(theta)
+```
+
+Use `ewgroup` with regressors if each unit has its own regression coefficient:
+
+```stata
+ewgroup y x1 x2, group(unit) prefix(theta_)
+```
+
+Use the `sigma()` option only when you are working with covariance matrices
+directly, especially for vector-valued estimates.
+
+## Step-by-Step: Estimates and Standard Errors
+
+This is the simplest use case. Suppose you have one estimate per unit and a
+standard error for each estimate.
+
+Your data should look like this:
+
+```text
+unit    beta_hat    se_hat
+1       -1.10       0.200
+2       -0.95       0.235
+3        0.20       0.212
+4        0.27       0.245
+5        1.30       0.224
+```
+
+In Stata:
 
 ```stata
 clear
-input double beta_hat se_hat
--1.10 .200
--0.95 .235
- 0.20 .212
- 0.27 .245
- 1.30 .224
+input byte unit double beta_hat se_hat
+1 -1.10 .200
+2 -0.95 .235
+3  0.20 .212
+4  0.27 .245
+5  1.30 .224
 end
 
 ewgroup_core beta_hat, se(se_hat) generate(theta) replace
-list beta_hat se_hat theta
+list unit beta_hat se_hat theta
 ```
 
-Here `beta_hat` is the cell-by-cell estimate and `theta` is the final adjusted
-estimate. This is the simplest workflow when the first-stage estimates and
-standard errors have already been computed.
+Here:
 
-If you have variances instead of standard errors, use `variance()`:
+- `beta_hat` is the original cell-by-cell estimate.
+- `se_hat` is its standard error.
+- `theta` is the adjusted estimate produced by `ewgroup_core`.
+
+If you have variances rather than standard errors:
 
 ```stata
 generate double variance_hat = se_hat^2
 ewgroup_core beta_hat, variance(variance_hat) generate(theta2) replace
 ```
 
-The `se()` and `variance()` options are for scalar estimates. For vector-valued
-coefficients, use the `sigma()` covariance input described below.
+## Step-by-Step: Cell Means From Raw Data
 
-### Cell means from raw data
-
-Use this when the model is
+Use this when the model is a cell mean:
 
 ```text
 y_i = beta(w_i) + error_i
 ```
 
-and you want one final estimate per cell.
+Here is a complete example:
 
 ```stata
 clear
@@ -145,24 +138,24 @@ input byte w double y
 4  1.35
 end
 
-ewgroup y, group(w) generate(theta) tildeprefix(tilde_) replace
-list w y theta tilde_1, sepby(w)
+ewgroup y, group(w) generate(theta) replace
+list w y theta, sepby(w)
 matrix list e(theta)
 ```
 
-The generated variable `theta` repeats the final cell-level estimate for each
-observation in the same cell. The matrix `e(theta)` contains one row per cell.
+The generated variable `theta` is repeated for every observation in the same
+cell. The matrix `e(theta)` has one row per cell.
 
-### Cell-specific regressions from raw data
+## Step-by-Step: Cell-Specific Regressions
 
-Use this when the model is
+Use this when each cell has its own slope, intercept, or vector of regression
+coefficients:
 
 ```text
 y_i = beta(w_i)' x_i + error_i
 ```
 
-The command includes an intercept by default, following Stata's regression
-convention.
+Example with one regressor and an intercept:
 
 ```stata
 clear
@@ -171,16 +164,16 @@ generate byte w = ceil(_n / 20)
 generate double x = mod(_n - 1, 20) / 10
 generate double y = 1 + .2*w + (.1*w)*x + sin(_n)/20
 
-ewgroup y x, group(w) prefix(theta_) tildeprefix(tilde_) replace
+ewgroup y x, group(w) prefix(theta_) replace
 
 describe theta_1 theta_2
 matrix list e(beta_hat)
 matrix list e(theta)
 ```
 
-With one regressor and an intercept, `theta_1` corresponds to the slope on `x`
-and `theta_2` corresponds to the intercept. The column names of `e(theta)` show
-the same coefficient order.
+By default Stata includes an intercept. With one regressor, `theta_1` is the
+slope on `x` and `theta_2` is the intercept. The column names of `e(theta)` show
+the same order.
 
 To omit the intercept:
 
@@ -188,124 +181,113 @@ To omit the intercept:
 ewgroup y x, group(w) noconstant prefix(theta_) replace
 ```
 
-## Low-Level Interface: `ewgroup_core`
+## Reading the Main Results
 
-Use `ewgroup_core` when you already have one row per cell:
-
-- `beta_vars`: naive estimates, one column per coefficient.
-- `sigma()`: scaled covariance estimates.
-- `sigma2()`: scale parameter such that
-  `Var(beta_hat_j) = sigma2 * Sigma_hat_j`.
-
-### Scalar case
+For `ewgroup_core`, the adjusted estimates are stored in `r(theta)`.
 
 ```stata
-clear
-input double beta_hat se_hat
--1.10 .200
--0.95 .235
- 0.20 .212
- 0.27 .245
- 1.30 .224
-end
-
-ewgroup_core beta_hat, se(se_hat) generate(theta) tildeprefix(tilde_) ///
-    returnweights replace
-
-list beta_hat se_hat theta tilde_1
-matrix list r(weights)
+matrix list r(theta)
+return list
 ```
 
-If you want to work with the paper's scaled covariance notation directly, pass
-`sigma()` and `sigma2()`. In that case `sigma()` contains `Sigma_hat_j` and the
-variance of `beta_hat_j` is `sigma2 * Sigma_hat_j`.
+For `ewgroup`, the adjusted estimates are stored in `e(theta)`.
 
-### Vector case with diagonal covariance estimates
+```stata
+matrix list e(theta)
+ereturn list
+```
 
-If there are `d` coefficient columns and `sigma()` contains `d` variables,
-`ewgroup_core` treats those variables as the diagonal entries of each
-cell-specific covariance matrix.
+The most useful scalars are:
+
+- `alpha`: the SURE weight on the averaged estimate.
+- `gamma`: the tuning parameter used in the exponential weights.
+- `sigma2`: the scale parameter used for the covariance estimates.
+
+When `alpha` is close to zero, the final estimate is close to the original
+cell-by-cell estimate. When `alpha` is close to one, the final estimate puts
+more weight on the averaged estimate.
+
+## Vector-Valued Estimates With Covariance Matrices
+
+For scalar estimates, use `se()` or `variance()` unless you have a reason to use
+the paper's scaled covariance notation.
+
+For vector-valued estimates, pass the coefficient columns as the varlist and
+pass covariance information through `sigma()`.
+
+If the covariance matrices are diagonal:
 
 ```stata
 ewgroup_core b1 b2, sigma(s11 s22) sigma2(.1) gamma(.05) prefix(theta_) replace
 ```
 
-### Vector case with full covariance estimates
-
-If `sigma()` contains `d*d` variables, the variables are interpreted in
-row-major order:
-
-```text
-S11 S12 ... S1d S21 S22 ... Sdd
-```
-
-For `d = 2`:
+If the covariance matrices are full, list the entries in row order. For a
+two-dimensional estimate, the order is `s11 s12 s21 s22`:
 
 ```stata
 ewgroup_core b1 b2, sigma(s11 s12 s21 s22) sigma2(.1) gamma(.05) ///
-    prefix(theta_) tildeprefix(tilde_) replace
+    prefix(theta_) replace
 ```
+
+With `sigma()`, the variance of the preliminary estimate is interpreted as:
+
+```text
+Var(beta_hat_j) = sigma2 * Sigma_hat_j
+```
+
+This is the notation used in the paper and in the companion R package.
 
 ## Tuning Parameters
 
-### `sigma2()`
+Most users can start with the defaults.
 
-For `ewgroup`, the default is `J/N`, where `J` is the number of observed cells
-and `N` is the estimation sample size. This matches the normalization used in
-the paper.
+For `ewgroup`, the default `sigma2` is `J/N`, where `J` is the number of cells
+and `N` is the number of observations.
 
-For `ewgroup_core`, `sigma2()` is required because the command does not know how
-the preliminary estimates were constructed.
+For `ewgroup_core` with `se()` or `variance()`, the default is `sigma2(1)`,
+because the standard errors or variances are already on the usual scale.
 
-### `gamma()`
-
-`gamma()` controls the exponential weighting. If omitted, the package uses
+If `gamma()` is not supplied, the package uses:
 
 ```text
 gamma = factor / max_j lambda_max(Sigma_hat_j)
 ```
 
-where `factor` defaults to `0.2`.
+with `factor(0.2)` by default. A larger `gamma` makes the weights more sensitive
+to differences between preliminary estimates. The command checks that `gamma`
+is small enough for the calculation to be well defined.
 
-The command requires
+## Common Mistakes
 
-```text
-gamma * max_j lambda_max(Sigma_hat_j) < 1
+### The output variable already exists
+
+Use `replace` if you want to overwrite generated output variables:
+
+```stata
+ewgroup_core beta_hat, se(se_hat) generate(theta) replace
 ```
 
-so that the covariance-adjustment matrices are invertible.
+### I have raw data but used `ewgroup_core`
 
-## Stored Results
+`ewgroup_core` expects one row per cell. If your data have one row per person,
+case, observation, or transaction, use `ewgroup`.
 
-### `ewgroup`
+### I have estimates and standard errors but used `ewgroup`
 
-`ewgroup` is an e-class command. The main stored results are:
+Use `ewgroup_core`:
 
-- `e(theta)`: final cell-level estimates.
-- `e(beta_hat)`: naive cell-level estimates.
-- `e(tilde)`: exponentially weighted estimates before SURE recombination.
-- `e(cells)`: cell ids corresponding to rows of the matrices.
-- `e(ncell)`: cell sample sizes.
-- `e(alpha)`: SURE mixing weight.
-- `e(gamma)`: tuning parameter used.
-- `e(sigma2)`: scale parameter used.
+```stata
+ewgroup_core beta_hat, se(se_hat) generate(theta)
+```
 
-### `ewgroup_core`
+### My group variable is a string
 
-`ewgroup_core` is an r-class command. The main stored results are:
+`ewgroup` accepts string group variables. It encodes them internally before
+estimation. The stored `e(cells)` matrix contains the encoded numeric ids.
 
-- `r(theta)`: final estimates.
-- `r(tilde)`: exponentially weighted estimates before SURE recombination.
-- `r(weights)`: exponential weights, if `returnweights` is specified.
-- `r(alpha)`: SURE mixing weight.
-- `r(gamma)`: tuning parameter used.
-- `r(sigma2)`: scale parameter used.
+## Running the Example File
 
-See `help ewgroup` and `help ewgroup_core` for the full list.
-
-## Running Examples
-
-The example script can be run from Stata:
+The repository includes a short example script:
 
 ```stata
 cd "/path/to/ewgroup_stata"
@@ -314,8 +296,8 @@ do examples/basic_usage.do
 
 ## Testing
 
-The certification script compares Stata results against fixtures generated from
-the companion R package and also runs a raw-data vector regression smoke test.
+The certification script compares the Stata output against fixtures generated
+from the companion R package:
 
 ```stata
 cd "/path/to/ewgroup_stata"
@@ -335,6 +317,27 @@ Rscript tests/make_reference.R
 ```
 
 Then rerun the Stata certification script.
+
+## Files in This Repository
+
+```text
+ewgroup.ado              raw-data command
+ewgroup_core.ado         cell-summary command
+ewgroup_mata.mata        shared Mata code
+ewgroup.sthlp            Stata help for ewgroup
+ewgroup_core.sthlp       Stata help for ewgroup_core
+ewgroup.pkg              net install package manifest
+stata.toc                Stata package table of contents
+examples/                runnable example do-files
+tests/                   certification tests and reference fixtures
+```
+
+## Requirements
+
+- Stata 16 or newer.
+- No external Stata packages are required.
+- R is only needed if you want to regenerate the reference fixtures in
+  `tests/`.
 
 ## Authors
 
