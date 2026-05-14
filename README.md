@@ -123,18 +123,9 @@ unit    beta_hat    se_hat
 5        1.30       0.224
 ```
 
-In Stata:
+If those variables are already in memory, run:
 
 ```stata
-clear
-input byte unit double beta_hat se_hat
-1 -1.10 .200
-2 -0.95 .235
-3  0.20 .212
-4  0.27 .245
-5  1.30 .224
-end
-
 ewgroup_core beta_hat, se(se_hat) generate(theta) replace
 list unit beta_hat se_hat theta
 ```
@@ -263,15 +254,10 @@ Each cell must have enough observations to estimate its own regression. With
 one regressor and an intercept, each cell needs at least two observations, and
 the regressor must vary within the cell.
 
+If those variables are already in memory, run:
+
 ```stata
-clear
-set obs 80
-generate byte w = ceil(_n / 20)
-generate double x = mod(_n - 1, 20) / 10
-generate double y = 1 + .2*w + (.1*w)*x + sin(_n)/20
-
 ewgroup y x, group(w) prefix(theta_) replace
-
 describe theta_1 theta_2
 matrix list e(beta_hat)
 matrix list e(theta)
@@ -318,22 +304,74 @@ more weight on the averaged estimate.
 For scalar estimates, use `se()` or `variance()` unless you have a reason to use
 the paper's scaled covariance notation.
 
-For vector-valued estimates, pass the coefficient columns as the varlist and
-pass covariance information through `sigma()`.
+For vector-valued estimates, each unit has more than one coefficient. For
+example, an occupation might have a baseline wage premium and a wage-growth
+coefficient, or a region might have an intercept and a slope.
 
-If the covariance matrices are diagonal:
+If you are starting from raw data, use `ewgroup`:
+
+```stata
+ewgroup y x, group(w) prefix(theta_) replace
+```
+
+Stata will compute the cell-specific regression estimates and their covariance
+matrices for you.
+
+If you already have the first-stage estimates and covariance matrices, use
+`ewgroup_core`. The data should have one row per unit:
+
+```text
+unit      b1       b2       s11      s12      s21      s22
+1       -1.00     0.20      1.00     0.10     0.10     1.30
+2       -0.80     0.10      1.10     0.00     0.00     0.90
+3        0.60    -0.30      0.80     0.20     0.20     1.40
+4        0.70    -0.40      1.20     0.10     0.10     1.00
+```
+
+Here `b1` and `b2` are the two preliminary coefficients. The variables `s11`,
+`s12`, `s21`, and `s22` are the entries of the covariance matrix for those two
+coefficients.
+
+### Diagonal covariance matrices
+
+If you only want to use the variances of each coefficient and ignore the
+covariance between coefficients, pass the diagonal entries to `sigma()`:
+
+```text
+unit      b1       b2       s11      s22
+1       -1.00     0.20      1.00     1.30
+2       -0.80     0.10      1.10     0.90
+3        0.60    -0.30      0.80     1.40
+```
 
 ```stata
 ewgroup_core b1 b2, sigma(s11 s22) sigma2(.1) gamma(.05) prefix(theta_) replace
 ```
 
-If the covariance matrices are full, list the entries in row order. For a
-two-dimensional estimate, the order is `s11 s12 s21 s22`:
+This writes `theta_1` and `theta_2`, the adjusted versions of `b1` and `b2`.
+
+### Full covariance matrices
+
+If you have the full covariance matrix, list the entries in row order. For a
+two-coefficient estimate, the order is:
+
+```text
+s11 s12 s21 s22
+```
 
 ```stata
 ewgroup_core b1 b2, sigma(s11 s12 s21 s22) sigma2(.1) gamma(.05) ///
     prefix(theta_) replace
 ```
+
+For three coefficients, the order would be:
+
+```text
+s11 s12 s13 s21 s22 s23 s31 s32 s33
+```
+
+The covariance matrix should be symmetric. In practice, `s12` and `s21` should
+usually be the same up to rounding.
 
 With `sigma()`, the variance of the preliminary estimate is interpreted as:
 
@@ -342,6 +380,10 @@ Var(beta_hat_j) = sigma2 * Sigma_hat_j
 ```
 
 This is the notation used in the paper and in the companion R package.
+
+If your covariance variables are ordinary variances and covariances, a simple
+choice is `sigma2(1)`. If you are using the normalization from the paper, pass
+the corresponding `sigma2()` value.
 
 ## Tuning Parameters
 
