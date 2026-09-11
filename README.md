@@ -17,9 +17,11 @@ From Stata:
 
 ```stata
 net install ewgroup, from("https://raw.githubusercontent.com/mnavjeev/ewgroup_stata/main") replace
+discard
 ```
 
-Then check that Stata can find the command:
+`discard` reloads ado commands after an update. Then check that Stata can find
+the command:
 
 ```stata
 help ewgroup
@@ -35,11 +37,11 @@ adopath ++ "/path/to/ewgroup_stata"
 
 ## Which Command Should I Use?
 
-Use `ewgroup_core` if you already have one row per unit with an estimate and a
-standard error. This is the closest workflow to empirical Bayes commands.
+Use `ewgroup` if you already have one row per unit with an estimate and a
+standard error. This follows the familiar empirical Bayes estimate-and-standard-error workflow.
 
 ```stata
-ewgroup_core beta_hat, se(se_hat) generate(theta)
+ewgroup beta_hat, se(se_hat) generate(theta)
 ```
 
 Use `ewgroup` if you have the raw data and want Stata to compute the first-stage
@@ -95,7 +97,7 @@ In this layout, use `ewgroup`.
 
 ### Estimate-and-standard-error layout
 
-Use this layout with `ewgroup_core`. Each row is one unit or cell, not one raw
+Use this layout with `ewgroup` and `se()` or `variance()`. Each row is one unit or cell, not one raw
 observation.
 
 ```text
@@ -105,7 +107,7 @@ unit    beta_hat    se_hat
 3        0.20       0.212
 ```
 
-In this layout, use `ewgroup_core`.
+In this layout, use `ewgroup beta_hat, se(se_hat) generate(theta)`.
 
 ## Step-by-Step: Estimates and Standard Errors
 
@@ -126,7 +128,7 @@ unit    beta_hat    se_hat
 If those variables are already in memory, run:
 
 ```stata
-ewgroup_core beta_hat, se(se_hat) generate(theta) replace
+ewgroup beta_hat, se(se_hat) generate(theta) replace
 list unit beta_hat se_hat theta
 ```
 
@@ -134,13 +136,13 @@ Here:
 
 - `beta_hat` is the original cell-by-cell estimate.
 - `se_hat` is its standard error.
-- `theta` is the adjusted estimate produced by `ewgroup_core`.
+- `theta` is the adjusted estimate produced by `ewgroup`.
 
 If you have variances rather than standard errors:
 
 ```stata
 generate double variance_hat = se_hat^2
-ewgroup_core beta_hat, variance(variance_hat) generate(theta2) replace
+ewgroup beta_hat, variance(variance_hat) generate(theta2) replace
 ```
 
 ## Step-by-Step: Cell Means From Raw Data
@@ -227,7 +229,9 @@ matrix list e(theta)
 
 The variable `theta` is constant within each value of `w`, because the estimate
 is a cell-level estimate. The matrix `e(theta)` gives the same estimates with
-one row per cell. The row order follows the cell ids in `e(cells)`.
+one row per cell. For raw data the row order follows sorted cell ids in `e(cells)`. For
+summary data it follows original observation order, and `e(cells)` contains
+the original observation numbers.
 
 ## Step-by-Step: Cell-Specific Regressions
 
@@ -251,7 +255,7 @@ observation    w       y        x
 ```
 
 Each cell must have enough observations to estimate its own regression. With
-one regressor and an intercept, each cell needs at least two observations, and
+one regressor and an intercept, each cell needs at least three usable observations, and
 the regressor must vary within the cell.
 
 If those variables are already in memory, run:
@@ -275,7 +279,10 @@ ewgroup y x, group(w) noconstant prefix(theta_) replace
 
 ## Reading the Main Results
 
-For `ewgroup_core`, the adjusted estimates are stored in `r(theta)`.
+`ewgroup` stores results from both summary and raw data in `e()`.
+`e(sample)` identifies exactly the input rows used for estimation.
+
+The compatible legacy command `ewgroup_core` continues to store results in `r()`:
 
 ```stata
 matrix list r(theta)
@@ -318,7 +325,7 @@ Stata will compute the cell-specific regression estimates and their covariance
 matrices for you.
 
 If you already have the first-stage estimates and covariance matrices, use
-`ewgroup_core`. The data should have one row per unit:
+`ewgroup` with `sigma()` and `sigma2()`. The data should have one row per unit:
 
 ```text
 unit      b1       b2       s11      s12      s21      s22
@@ -345,7 +352,7 @@ unit      b1       b2       s11      s22
 ```
 
 ```stata
-ewgroup_core b1 b2, sigma(s11 s22) sigma2(.1) gamma(.05) prefix(theta_) replace
+ewgroup b1 b2, sigma(s11 s22) sigma2(.1) gamma(.05) prefix(theta_) replace
 ```
 
 This writes `theta_1` and `theta_2`, the adjusted versions of `b1` and `b2`.
@@ -360,7 +367,7 @@ s11 s12 s21 s22
 ```
 
 ```stata
-ewgroup_core b1 b2, sigma(s11 s12 s21 s22) sigma2(.1) gamma(.05) ///
+ewgroup b1 b2, sigma(s11 s12 s21 s22) sigma2(.1) gamma(.05) ///
     prefix(theta_) replace
 ```
 
@@ -389,21 +396,25 @@ the corresponding `sigma2()` value.
 
 Most users can start with the defaults.
 
-For `ewgroup`, the default `sigma2` is `J/N`, where `J` is the number of cells
+For raw-data `ewgroup` with `group()`, the default `sigma2` is `J/N`, where `J` is the number of cells
 and `N` is the number of observations.
 
-For `ewgroup_core` with `se()` or `variance()`, the default is `sigma2(1)`,
+For `ewgroup` or `ewgroup_core` with `se()` or `variance()`, the default is `sigma2(1)`,
 because the standard errors or variances are already on the usual scale.
 
 If `gamma()` is not supplied, the package uses:
 
 ```text
-gamma = factor / max_j lambda_max(Sigma_hat_j)
+gamma = factor / (d * max_j lambda_max(Sigma_hat_j))
 ```
 
-with `factor(0.2)` by default. A larger `gamma` makes the weights more sensitive
-to differences between preliminary estimates. The command checks that `gamma`
-is small enough for the calculation to be well defined.
+where `d` is the dimension of each preliminary estimate, with `factor(0.2)` by
+default. Thus, when the covariance eigenvalues remain bounded, the default is
+proportional to `1/d`; for scalar estimates (`d = 1`), it reduces to the same
+scalar default. A larger `gamma` makes the weights more sensitive to differences
+between preliminary estimates. If `gamma()` is supplied, that value is used
+directly. The command checks that `gamma` is small enough for the calculation to
+be well defined.
 
 ## Common Mistakes
 
@@ -412,7 +423,7 @@ is small enough for the calculation to be well defined.
 Use `replace` if you want to overwrite generated output variables:
 
 ```stata
-ewgroup_core beta_hat, se(se_hat) generate(theta) replace
+ewgroup beta_hat, se(se_hat) generate(theta) replace
 ```
 
 ### I have raw data but used `ewgroup_core`
@@ -420,18 +431,55 @@ ewgroup_core beta_hat, se(se_hat) generate(theta) replace
 `ewgroup_core` expects one row per cell. If your data have one row per person,
 case, observation, or transaction, use `ewgroup`.
 
-### I have estimates and standard errors but used `ewgroup`
+### I have estimates and standard errors
 
-Use `ewgroup_core`:
+Use `ewgroup` with `se()`; do not supply `group()`:
 
 ```stata
-ewgroup_core beta_hat, se(se_hat) generate(theta)
+ewgroup beta_hat, se(se_hat) generate(theta)
 ```
 
 ### My group variable is a string
 
 `ewgroup` accepts string group variables. It encodes them internally before
 estimation. The stored `e(cells)` matrix contains the encoded numeric ids.
+
+## Output Safety and Input Checks
+
+Generated estimates use double precision. With `replace`, existing numeric
+output variables are promoted to double, and observations outside `if/in` or
+excluded for missing inputs retain their previous values. Newly generated
+variables are missing outside the estimation sample. Output names must be
+unique and cannot overlap any estimate, uncertainty, or group input. Failed
+commands leave the data and previous estimation results unchanged.
+
+Supply exactly one of `se()`, `variance()`, or `sigma()` for summary data;
+use `group()` only for raw data. Tuning values must be finite and positive.
+Covariance matrices must be symmetric and positive semidefinite; only relative
+roundoff errors are corrected. Raw cells require full-rank designs and more
+observations than coefficients to estimate residual uncertainty. Known zero
+covariances are allowed in summary data; if all are zero, specify `gamma()`.
+
+## Larger Datasets
+
+For tens of thousands of cells, store estimates directly in variables:
+
+```stata
+ewgroup beta_hat, se(se_hat) generate(theta) nomatrices
+```
+
+`nomatrices` requires `generate()` or `prefix()`. It retains scalar diagnostics
+and `e(sample)` while omitting returned matrices, and cannot be combined with
+`returnweights`. The legacy `ewgroup_core` supports the same option with `r()`
+scalars. The exact estimator compares every pair of cells, so computation grows
+quadratically with cell count. Without full weights, its working memory grows
+linearly with cell count at fixed coefficient dimension. `returnweights` and
+`weightsprefix()` explicitly request quadratic storage; use them only when the
+full weights are needed. Mata can store some matrices that exceed ordinary
+Stata matrix-operation limits, so generated variables are preferable for large
+jobs.
+
+See [tests/README.md](tests/README.md) for reproducible checks and benchmarks.
 
 ## Running the Example File
 
@@ -458,10 +506,19 @@ The package manifest can also be checked with a local `net install`:
 do tests/check_net_install.do
 ```
 
-To regenerate the R fixtures:
+To install and check isolated copies of both packages, regenerate fixtures, and
+run both certification suites:
 
 ```bash
-Rscript tests/make_reference.R
+python3 tests/run_checks.py
+```
+
+The fixture generator explicitly compares the installed compiled R package,
+the pure-R fallback, and an independent implementation of the draft equations.
+To use an existing R installation and write fixtures outside the checkout:
+
+```bash
+Rscript tests/make_reference.R --library=/path/to/R/library --output=/tmp/fixtures
 ```
 
 Then rerun the Stata certification script.
@@ -469,8 +526,9 @@ Then rerun the Stata certification script.
 ## Files in This Repository
 
 ```text
-ewgroup.ado              raw-data command
-ewgroup_core.ado         cell-summary command
+ewgroup.ado              summary-data and raw-data command
+ewgroup_core.ado         compatible rclass cell-summary command
+_ewgroup_validate_outputs.ado  shared output validation
 ewgroup_mata.mata        shared Mata code
 ewgroup.sthlp            Stata help for ewgroup
 ewgroup_core.sthlp       Stata help for ewgroup_core

@@ -1,13 +1,25 @@
 {smcl}
-{* *! version 0.1.0 14may2026}{...}
+{* *! version 0.2.0 11sep2026}{...}
 {vieweralsosee "ewgroup_core" "help ewgroup_core"}{...}
 {title:Title}
 
 {p2colset 5 18 20 2}{...}
-{p2col:{hi:ewgroup} {hline 2}}Exponentially weighted grouped-heterogeneity estimator from raw data{p_end}
+{p2col:{hi:ewgroup} {hline 2}}Exponentially weighted grouped-heterogeneity estimator for summary or raw data{p_end}
 {p2colreset}{...}
 
 {title:Syntax}
+
+{p 8 15 2}
+{cmd:ewgroup} {it:beta_vars} {ifin},
+{cmd:se(}{it:sevar}{cmd:)} | {cmd:variance(}{it:varvar}{cmd:)} |
+{cmd:sigma(}{it:covariance_vars}{cmd:)}
+[{cmd:sigma2(}{it:#}{cmd:)} {cmd:gamma(}{it:#}{cmd:)}
+ {cmd:factor(}{it:#}{cmd:)} {cmd:generate(}{it:newvar}{cmd:)}
+ {cmd:prefix(}{it:stub}{cmd:)} {cmd:tildeprefix(}{it:stub}{cmd:)}
+ {cmd:weightsprefix(}{it:stub}{cmd:)} {cmd:returnweights}
+ {cmd:nomatrices} {cmd:replace}]
+
+{pstd}Or, for raw observations:{p_end}
 
 {p 8 15 2}
 {cmd:ewgroup} {it:depvar} [{it:xvars}] {ifin},
@@ -19,9 +31,19 @@
  {cmd:generate(}{it:newvar}{cmd:)}
  {cmd:prefix(}{it:stub}{cmd:)}
  {cmd:tildeprefix(}{it:stub}{cmd:)}
- {cmd:replace}]
+ {cmd:nomatrices} {cmd:replace}]
 
 {title:Description}
+
+{pstd}
+For precomputed estimates, supply one row per cell and exactly one uncertainty
+option: {cmd:se()} or {cmd:variance()} for scalar estimates, or {cmd:sigma()}
+with {cmd:sigma2()} for scalar or vector estimates. Do not also supply
+{cmd:group()}. This is the usual estimate-and-standard-error workflow familiar
+from empirical Bayes commands. The legacy {help ewgroup_core} accepts the same
+summary data and continues to return {cmd:r()} results.
+
+{phang2}{cmd:. ewgroup beta_hat, se(se_hat) generate(theta)}{p_end}
 
 {pstd}
 {cmd:ewgroup} estimates cell-specific least-squares coefficients by values of
@@ -35,8 +57,8 @@ to use the weighted estimate by a feasible SURE rule.
 If no covariates are supplied, {cmd:ewgroup} estimates cell means.  If
 covariates are supplied, a constant is included by default, following Stata's
 regression convention.  Specify {cmd:noconstant} to estimate the model without
-an intercept.  The command requires the within-cell design matrix to have full
-column rank in every cell.
+an intercept.  Every cell needs more usable observations than coefficients, and its design
+matrix must have full column rank to estimate residual uncertainty.
 
 {pstd}
 The command is useful when there are many values of a discrete covariate and
@@ -102,16 +124,20 @@ stored {cmd:e(cells)} matrix then contains encoded cell ids.
 
 {phang}
 {cmd:sigma2(}{it:#}{cmd:)} sets the scale parameter.  If omitted, the default
-is {it:J}/{it:N}, where {it:J} is the number of observed cells and {it:N} is the
-estimation sample size.  This is the normalization used in the paper.
+with {cmd:group()} is {it:J}/{it:N}, where {it:J} is the number of observed cells and {it:N} is the
+estimation sample size. With {cmd:se()} or {cmd:variance()}, the default is 1;
+with {cmd:sigma()}, this option is required. Covariances are interpreted as
+{cmd:sigma2()} times the supplied scaled covariance matrices.
 
 {phang}
 {cmd:gamma(}{it:#}{cmd:)} sets the exponential-weight tuning parameter.  If
-omitted, the default is {cmd:factor()}/{cmd:max_lambda}, where
-{cmd:max_lambda} is the largest eigenvalue among the scaled covariance
-estimates.  Larger values make the weights place more emphasis on cells with
-similar preliminary estimates.  The command checks that the value is small
-enough for the required matrix inverses to exist.
+omitted, the default is {cmd:factor()}/({it:d}*{cmd:max_lambda}), where {it:d}
+is the number of coefficients and {cmd:max_lambda} is the largest eigenvalue
+among the scaled covariance estimates.  Thus the default is proportional to
+1/{it:d} when the covariance eigenvalues remain bounded.  Larger values make
+the weights place more emphasis on cells with similar preliminary estimates.
+The command checks that the value is small enough for the required matrix
+inverses to exist.
 
 {phang}
 {cmd:factor(}{it:#}{cmd:)} sets the default-gamma multiplier.  The default is
@@ -137,12 +163,45 @@ before SURE recombination in variables {it:stub}{cmd:1}, ...,
 {it:stub}{it:d}.
 
 {phang}
-{cmd:replace} allows generated output variables to already exist.
+{cmd:se(}{it:varname}{cmd:)} supplies standard errors for one scalar estimate
+per cell. {cmd:variance()} instead supplies variances. Both must be nonnegative.
+
+{phang}
+{cmd:sigma(}{it:varlist}{cmd:)} supplies scaled covariances: one variable for
+scalar estimates, {it:d} variables for diagonal vector covariances, or {it:d*d}
+variables in row order for full covariances (for example, s11 s12 s21 s22).
+Matrices must be symmetric and positive semidefinite; only relative roundoff
+errors are corrected. See {help ewgroup_core} for detailed covariance examples.
+
+{phang}
+{cmd:weightsprefix(}{it:stub}{cmd:)} generates one weight variable per cell.
+{cmd:returnweights} returns {cmd:e(weights)}. These options are available only
+for summary inputs and explicitly request quadratic storage.
+
+{phang}
+{cmd:nomatrices} omits returned matrices while retaining scalar results and
+{cmd:e(sample)}. It requires {cmd:generate()} or {cmd:prefix()} and cannot be
+combined with {cmd:returnweights}. Use it for large jobs. Without it, result
+matrices must fit within the current Stata edition's matrix-operation limits.
+
+{phang}
+{cmd:replace} permits existing numeric outputs and promotes them to double.
+Values outside the estimation sample remain unchanged; new outputs are missing
+there. Names must be unique and cannot overlap any input. Errors and Break
+leave the data and previous estimation results unchanged.
+
+{pstd}
+The SURE mixing weight is invariant to a common change of units. When the
+weighted correction is exactly zero, {cmd:alpha} is set to zero. If every
+summary covariance is zero, specify {cmd:gamma()} explicitly. Custom gamma
+must satisfy gamma times the largest scaled covariance eigenvalue less than
+one; the default uses the draft's 0.2/(dimension times maximum eigenvalue).
 
 {title:Stored results}
 
 {pstd}
-{cmd:ewgroup} stores the following in {cmd:e()}:
+{cmd:ewgroup} stores the following in {cmd:e()}. Matrices are omitted with
+{cmd:nomatrices}; {cmd:e(sample)} marks the observations used in either mode:
 
 {synoptset 24 tabbed}{...}
 {synopt:{cmd:e(N)}}number of observations{p_end}
@@ -150,6 +209,9 @@ before SURE recombination in variables {it:stub}{cmd:1}, ...,
 {synopt:{cmd:e(d)}}coefficient dimension{p_end}
 {synopt:{cmd:e(alpha)}}SURE mixing weight{p_end}
 {synopt:{cmd:e(alpha_unconstrained)}}unconstrained SURE mixing weight{p_end}
+{synopt:{cmd:e(mode)}}summary or raw{p_end}
+{synopt:{cmd:e(factor)}}default-gamma multiplier{p_end}
+{synopt:{cmd:e(weights)}}weights when returnweights is requested{p_end}
 {synopt:{cmd:e(gamma)}}tuning parameter used{p_end}
 {synopt:{cmd:e(sigma2)}}scale parameter used{p_end}
 {synopt:{cmd:e(sure_A)}}quadratic SURE coefficient{p_end}
@@ -158,8 +220,8 @@ before SURE recombination in variables {it:stub}{cmd:1}, ...,
 {synopt:{cmd:e(theta)}}final cell-level estimates{p_end}
 {synopt:{cmd:e(beta_hat)}}naive cell-level estimates{p_end}
 {synopt:{cmd:e(tilde)}}exponentially weighted estimates{p_end}
-{synopt:{cmd:e(cells)}}cell ids corresponding to rows of the matrices{p_end}
-{synopt:{cmd:e(ncell)}}cell sample sizes{p_end}
+{synopt:{cmd:e(cells)}}raw group ids, or original observation numbers for summary data{p_end}
+{synopt:{cmd:e(ncell)}}raw cell sample sizes, or ones for summary data{p_end}
 {synopt:{cmd:e(derivative_trace)}}cell-level divergence terms used by SURE{p_end}
 {synopt:{cmd:e(cmd)}}{cmd:ewgroup}{p_end}
 
@@ -184,10 +246,8 @@ before SURE recombination in variables {it:stub}{cmd:1}, ...,
 {title:Low-level interface}
 
 {pstd}
-If you already have one row per cell with preliminary estimates and scaled
-covariance estimates, use {help ewgroup_core}.  For scalar estimates,
-{cmd:ewgroup_core} can also take the familiar empirical-Bayes-style input of a
-point estimate and a standard error:
+Use {help ewgroup_core} when existing code expects {cmd:r()} results for
+preliminary estimates and their uncertainties. It computes the same estimator:
 
 {phang2}{cmd:. ewgroup_core beta_hat, se(se_hat) generate(theta)}{p_end}
 
@@ -195,13 +255,19 @@ point estimate and a standard error:
 
 {pstd}
 The exact calculation compares every pair of cells.  This is usually fine for
-hundreds or a few thousand cells.  Very large numbers of cells can require more
-time and memory because the command must compute many pairwise comparisons.
+large jobs with {cmd:nomatrices}, but runtime remains quadratic in cell count.
+Working memory is linear at fixed dimension unless full weights are requested.
 
 {pstd}
-Rows of {cmd:e(theta)}, {cmd:e(beta_hat)}, and {cmd:e(tilde)} are ordered by the
-numeric cell id in {cmd:e(cells)}.  For string groups, Stata internally assigns
-numeric ids before estimation.
+Rows of {cmd:e(theta)}, {cmd:e(beta_hat)}, and {cmd:e(tilde)} follow original
+observation order for summary data and sorted cell ids for raw data. For string
+groups, Stata internally assigns numeric ids in sorted string order.
+
+{pstd}
+Extremely small {cmd:sure_A} or {cmd:sure_D} diagnostics can underflow to zero;
+the mixing ratio is calculated with scaled arithmetic. An unconstrained alpha
+outside Stata's numeric range is returned as missing, while the constrained
+{cmd:alpha} remains zero or one.
 
 {title:Author}
 

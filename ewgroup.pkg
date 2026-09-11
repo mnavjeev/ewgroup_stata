@@ -1,15 +1,16 @@
-v 0.1.0
+v 0.2.0
 d ewgroup: exponentially weighted grouped-heterogeneity estimator
 d
 d Implements an exponentially weighted estimator for grouped heterogeneity in
 d collections of noisy cell-specific estimates, with SURE recombination.
 d
-d Distribution-Date: 20260514
+d Distribution-Date: 20260911
 d Author: Manu Navjeevan, Denis Chetverikov, and Andrei Voronin
 d Maintainer: Manu Navjeevan
 d
 f ewgroup.ado
 f ewgroup_core.ado
+f _ewgroup_validate_outputs.ado
 f ewgroup_mata.mata
 f ewgroup.sthlp
 f ewgroup_core.sthlp

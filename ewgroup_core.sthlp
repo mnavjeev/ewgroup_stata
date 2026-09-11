@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.0 14may2026}{...}
+{* *! version 0.2.0 11sep2026}{...}
 {vieweralsosee "ewgroup" "help ewgroup"}{...}
 {title:Title}
 
@@ -22,9 +22,14 @@
  {cmd:tildeprefix(}{it:stub}{cmd:)}
  {cmd:weightsprefix(}{it:stub}{cmd:)}
  {cmd:returnweights}
- {cmd:replace}]
+ {cmd:nomatrices} {cmd:replace}]
 
 {title:Description}
+
+{pstd}
+This is the compatible {cmd:rclass} summary interface. New workflows may use
+{cmd:ewgroup beta_hat, se(se_hat) generate(theta)} for {cmd:e()} results and
+{cmd:e(sample)}. Both commands use the same numerical estimator.
 
 {pstd}
 {cmd:ewgroup_core} is the cell-summary interface for the exponentially weighted
@@ -128,7 +133,10 @@ it is required.
 
 {phang}
 {cmd:gamma(}{it:#}{cmd:)} sets the exponential-weight tuning parameter.  If
-omitted, the default is {cmd:factor()}/{cmd:max_lambda}.  Larger values make
+omitted, the default is {cmd:factor()}/({it:d}*{cmd:max_lambda}), where {it:d}
+is the number of coefficients and {cmd:max_lambda} is the largest eigenvalue
+among the scaled covariance estimates.  Thus the default is proportional to
+1/{it:d} when the covariance eigenvalues remain bounded.  Larger values make
 the weights place more emphasis on cells with similar preliminary estimates.
 The command checks that the value is small enough for the required matrix
 inverses to exist.
@@ -162,12 +170,27 @@ exponential weights as variables {it:stub}{cmd:1}, ..., {it:stub}{it:J}.  Row
 {cmd:returnweights} stores the weight matrix in {cmd:r(weights)}.
 
 {phang}
-{cmd:replace} allows generated output variables to already exist.
+{cmd:nomatrices} omits all returned matrices while keeping scalar diagnostics.
+It requires {cmd:generate()} or {cmd:prefix()} and cannot be combined with
+{cmd:returnweights}. Use this option for large jobs. Without it, matrices must
+fit within the current Stata edition's matrix-operation limits.
+
+{phang}
+{cmd:replace} permits existing numeric outputs and promotes them to double.
+Values outside {cmd:if/in} and rows excluded for missing inputs are preserved.
+New outputs are missing outside that sample. Output names must be distinct and
+cannot overlap estimate or uncertainty inputs. Errors and Break preserve data.
+
+{pstd}
+Tuning options must be finite and positive. Covariances must be symmetric and
+positive semidefinite; only relative roundoff errors are corrected. If all
+covariances are zero, choose {cmd:gamma()} explicitly.
 
 {title:Stored results}
 
 {pstd}
-{cmd:ewgroup_core} stores the following in {cmd:r()}:
+{cmd:ewgroup_core} stores the following in {cmd:r()}; matrices are omitted with
+{cmd:nomatrices}:
 
 {synoptset 28 tabbed}{...}
 {synopt:{cmd:r(alpha)}}SURE mixing weight{p_end}
@@ -214,8 +237,14 @@ calling the same Mata estimator.
 
 {pstd}
 The exact calculation compares every pair of cells.  This is usually fine for
-hundreds or a few thousand cells.  Very large numbers of cells can require more
-time and memory.
+tens of thousands of cells with {cmd:nomatrices}, but runtime is quadratic.
+Working memory is linear in cell count at fixed dimension unless full weights
+are requested. Full weights require quadratic memory.
+
+{pstd}
+Extremely small SURE diagnostics can underflow to zero without changing the
+scaled mixing ratio. An unconstrained alpha beyond Stata's numeric range is
+returned as missing; the constrained alpha remains zero or one.
 
 {title:Author}
 
